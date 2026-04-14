@@ -24,6 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<UserRole>('mekanik');
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const AUTH_BOOT_TIMEOUT_MS = 6000;
 
   const resolveRole = async (currentSession: Session | null) => {
     if (!currentSession?.user) {
@@ -63,13 +64,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const withTimeout = async <T,>(task: Promise<T>, timeoutMs: number) => {
+    let timeoutHandle: number | undefined;
+    const timeoutPromise = new Promise<null>((resolve) => {
+      timeoutHandle = window.setTimeout(() => resolve(null), timeoutMs);
+    });
+
+    const result = await Promise.race([task, timeoutPromise]);
+    if (timeoutHandle !== undefined) {
+      window.clearTimeout(timeoutHandle);
+    }
+    return result;
+  };
+
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession()
-      .then(async ({ data }) => {
+    withTimeout(supabase.auth.getSession(), AUTH_BOOT_TIMEOUT_MS)
+      .then(async (result) => {
         if (!mounted) return;
-        setSession(data.session);
-        await resolveRole(data.session);
+        const nextSession = result?.data.session ?? null;
+        setSession(nextSession);
+        await withTimeout(resolveRole(nextSession), AUTH_BOOT_TIMEOUT_MS);
       })
       .catch(() => {
         if (!mounted) return;
@@ -82,10 +97,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+      if (!mounted) return;
       setLoading(true);
-      setSession(nextSession);
-      await resolveRole(nextSession);
-      setLoading(false);
+      try {
+        setSession(nextSession);
+        await withTimeout(resolveRole(nextSession), AUTH_BOOT_TIMEOUT_MS);
+      } catch {
+        if (!mounted) return;
+        setRole('mekanik');
+        setProfile(null);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     });
 
     return () => {
