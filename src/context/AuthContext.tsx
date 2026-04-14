@@ -39,31 +39,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRole('mekanik');
     }
 
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('role, full_name')
-      .eq('user_id', currentSession.user.id)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('role, full_name')
+        .eq('user_id', currentSession.user.id)
+        .maybeSingle();
 
-    if (data?.role === 'admin' || data?.role === 'mekanik') {
-      setRole(data.role);
-      setProfile({ role: data.role, full_name: data.full_name ?? '' });
-      return;
+      if (error) {
+        setProfile(null);
+        return;
+      }
+
+      if (data?.role === 'admin' || data?.role === 'mekanik') {
+        setRole(data.role);
+        setProfile({ role: data.role, full_name: data.full_name ?? '' });
+        return;
+      }
+
+      setProfile(null);
+    } catch {
+      setProfile(null);
     }
-
-    setProfile(null);
   };
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mounted) return;
-      setSession(data.session);
-      await resolveRole(data.session);
-      if (mounted) setLoading(false);
-    });
+    supabase.auth.getSession()
+      .then(async ({ data }) => {
+        if (!mounted) return;
+        setSession(data.session);
+        await resolveRole(data.session);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSession(null);
+        setRole('mekanik');
+        setProfile(null);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+      setLoading(true);
       setSession(nextSession);
       await resolveRole(nextSession);
       setLoading(false);
