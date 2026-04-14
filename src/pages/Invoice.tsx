@@ -6,6 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
+import DocumentPrintTemplate from '../components/DocumentPrintTemplate';
 
 type View = 'list' | 'form' | 'detail';
 
@@ -26,7 +27,7 @@ export default function InvoicePage() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const invoiceDetailRef = useRef<HTMLDivElement | null>(null);
+  const invoicePdfRef = useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = useState<Partial<Invoice>>({
     invoice_number: '',
@@ -143,7 +144,7 @@ export default function InvoicePage() {
   };
 
   const handleDownloadPdf = async () => {
-    if (!selected || !invoiceDetailRef.current) return;
+    if (!selected || !invoicePdfRef.current) return;
     setExportingPdf(true);
     try {
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
@@ -151,7 +152,7 @@ export default function InvoicePage() {
         import('jspdf'),
       ]);
 
-      const canvas = await html2canvas(invoiceDetailRef.current, {
+      const canvas = await html2canvas(invoicePdfRef.current, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
@@ -352,7 +353,7 @@ export default function InvoicePage() {
             )}
           </div>
         </div>
-        <div ref={invoiceDetailRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-white">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-white">
           <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-base font-bold text-slate-800">{selected.customer_name}</span>
@@ -386,6 +387,26 @@ export default function InvoicePage() {
               <p className="text-sm text-slate-700">{selected.notes}</p>
             </div>
           )}
+        </div>
+        <div className="fixed -left-[9999px] top-0 pointer-events-none">
+          <div ref={invoicePdfRef}>
+            <DocumentPrintTemplate
+              documentLabel="INVOICE"
+              documentNumber={selected.invoice_number}
+              issueDate={selected.created_at}
+              dueDateLabel="PAYMENT DUE"
+              dueDate={selected.due_date}
+              customerName={selected.customer_name}
+              customerEmail={selected.customer_email}
+              customerPhone={selected.customer_phone}
+              items={Array.isArray(selected.items) ? selected.items : []}
+              subtotal={selected.subtotal}
+              taxRate={selected.tax_rate}
+              taxAmount={selected.tax_amount}
+              total={selected.total}
+              notes={selected.notes}
+            />
+          </div>
         </div>
       </div>
     );

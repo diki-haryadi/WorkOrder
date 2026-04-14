@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Plus, Search, FileText, X, ChevronRight, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Search, FileText, X, ChevronRight, Trash2, PlusCircle, MinusCircle, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Quotation, QuotationStatus, LineItem, WorkOrder, WorkOrderRepairItem } from '../types';
 import StatusBadge from '../components/StatusBadge';
 import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
+import DocumentPrintTemplate from '../components/DocumentPrintTemplate';
 
 type View = 'list' | 'form' | 'detail';
 
@@ -26,6 +27,8 @@ export default function QuotationPage() {
   const [selected, setSelected] = useState<Quotation | null>(null);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const quotationPdfRef = useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = useState<Partial<Quotation>>({
     quotation_number: '',
@@ -148,6 +151,35 @@ export default function QuotationPage() {
       setSelected(prev => prev ? { ...prev, status: 'ready_to_invoice' } : prev);
     }
     await load();
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!selected || !quotationPdfRef.current) return;
+    setExportingPdf(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const canvas = await html2canvas(quotationPdfRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      });
+
+      const imageData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageHeight = (canvas.height * pageWidth) / canvas.width;
+      const fittedHeight = Math.min(imageHeight, pageHeight - 10);
+
+      pdf.addImage(imageData, 'PNG', 0, 5, pageWidth, fittedHeight);
+      pdf.save(`${selected.quotation_number || 'quotation'}.pdf`);
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   const handleSave = async () => {
@@ -329,9 +361,19 @@ export default function QuotationPage() {
             <X size={18} className="text-slate-600" />
           </button>
           <h2 className="text-base font-semibold text-slate-800 flex-1">{selected.quotation_number}</h2>
-          {isAdmin && (
-            <button onClick={() => openEdit(selected)} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">Edit</button>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={exportingPdf}
+              className="px-3 py-1.5 bg-slate-100 text-slate-700 text-sm font-medium rounded-xl disabled:opacity-50 active:scale-95 transition-all inline-flex items-center gap-1"
+            >
+              <Download size={14} />
+              {exportingPdf ? 'Export...' : 'Unduh PDF'}
+            </button>
+            {isAdmin && (
+              <button onClick={() => openEdit(selected)} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">Edit</button>
+            )}
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3">
@@ -377,6 +419,26 @@ export default function QuotationPage() {
               <p className="text-sm text-slate-700">{selected.notes}</p>
             </div>
           )}
+        </div>
+        <div className="fixed -left-[9999px] top-0 pointer-events-none">
+          <div ref={quotationPdfRef}>
+            <DocumentPrintTemplate
+              documentLabel="QUOTATION"
+              documentNumber={selected.quotation_number}
+              issueDate={selected.created_at}
+              dueDateLabel="VALID UNTIL"
+              dueDate={selected.valid_until}
+              customerName={selected.customer_name}
+              customerEmail={selected.customer_email}
+              customerPhone={selected.customer_phone}
+              items={Array.isArray(selected.items) ? selected.items : []}
+              subtotal={selected.subtotal}
+              taxRate={selected.tax_rate}
+              taxAmount={selected.tax_amount}
+              total={selected.total}
+              notes={selected.notes}
+            />
+          </div>
         </div>
       </div>
     );
