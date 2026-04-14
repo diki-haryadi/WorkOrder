@@ -6,7 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
-import DocumentPrintTemplate from '../components/DocumentPrintTemplate';
+import PrintTemplate from '../components/PrintTemplate';
 
 type View = 'list' | 'form' | 'detail';
 
@@ -390,7 +390,7 @@ export default function InvoicePage() {
         </div>
         <div className="fixed -left-[9999px] top-0 pointer-events-none">
           <div ref={invoicePdfRef}>
-            <DocumentPrintTemplate
+            <PrintTemplate
               documentLabel="INVOICE"
               documentNumber={selected.invoice_number}
               issueDate={selected.created_at}
