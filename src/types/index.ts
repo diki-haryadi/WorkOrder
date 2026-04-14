@@ -4,6 +4,18 @@ export type QuotationStatus = 'draft' | 'sent' | 'ready_to_invoice' | 'accepted'
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue';
 export type UserRole = 'admin' | 'mekanik';
 
+export interface BusinessProfile {
+  user_id: string;
+  business_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  website: string;
+  npwp: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface MasterProductService {
   id: string;
   code: string;

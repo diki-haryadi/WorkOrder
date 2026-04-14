@@ -15,6 +15,10 @@ interface PrintTemplateProps {
   taxAmount: number;
   total: number;
   notes?: string | null;
+  businessName?: string | null;
+  businessAddress?: string | null;
+  businessEmail?: string | null;
+  businessPhone?: string | null;
 }
 
 const formatIDR = (value: number) =>
@@ -42,6 +46,10 @@ export default function PrintTemplate({
   taxAmount,
   total,
   notes,
+  businessName,
+  businessAddress,
+  businessEmail,
+  businessPhone,
 }: PrintTemplateProps) {
   return (
     <div
@@ -56,10 +64,10 @@ export default function PrintTemplate({
       <div className="grid grid-cols-2 gap-8 mb-10">
         <div className="border-l border-[#4a4a4a] pl-6 text-[15px] leading-7">
           <p className="text-[#a68f2d] font-bold text-sm tracking-wide mb-1">FROM:</p>
-          <p className="font-semibold text-[30px] leading-none mb-2">WorkOrder Pro</p>
-          <p>Jakarta, Indonesia</p>
-          <p>support@workorder.app</p>
-          <p>+62 812-3456-7890</p>
+          <p className="font-semibold text-[30px] leading-none mb-2">{businessName || 'WorkOrder Pro'}</p>
+          <p>{businessAddress || 'Jakarta, Indonesia'}</p>
+          <p>{businessEmail || 'support@workorder.app'}</p>
+          <p>{businessPhone || '+62 812-3456-7890'}</p>
         </div>
         <div className="border-l border-[#4a4a4a] pl-6 flex justify-between gap-6">
           <div className="text-[15px] leading-7">
@@ -68,9 +76,9 @@ export default function PrintTemplate({
             {customerPhone ? <p>{customerPhone}</p> : null}
             {customerEmail ? <p>{customerEmail}</p> : null}
           </div>
-          <div className="w-[130px] h-[86px] border border-[#d6d6d6] text-[#d68a21] font-bold text-center flex items-center justify-center text-xl">
+          {/* <div className="w-[130px] h-[86px] border border-[#d6d6d6] text-[#d68a21] font-bold text-center flex items-center justify-center text-xl">
             LOGO
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -124,7 +132,7 @@ export default function PrintTemplate({
           <div className="flex justify-between"><span>Subtotal</span><span>{formatIDR(subtotal)}</span></div>
           <div className="flex justify-between"><span>PPN {taxRate}%</span><span>{formatIDR(taxAmount)}</span></div>
           <div className="flex justify-between font-bold text-[24px] pt-3 mt-2 border-t border-[#4a4a4a]">
-            <span>Balance Due</span>
+            <span>Total</span>
             <span className="text-[#a68f2d]">{formatIDR(total)}</span>
           </div>
         </div>

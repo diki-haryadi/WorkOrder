@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User, Building2, Mail, Phone, MapPin, Globe, ChevronRight, Bell, Shield, HelpCircle, LogOut, CreditCard as Edit3, X, Check, Boxes } from 'lucide-react';
 import FormField, { Input, Textarea } from '../components/FormField';
 import { useAuth } from '../context/AuthContext';
 import { NavTab } from '../types';
+import { supabase } from '../lib/supabase';
+import { defaultBusinessProfile, getBusinessProfile } from '../lib/businessProfile';
 
 interface ProfileData {
   name: string;
@@ -15,13 +17,8 @@ interface ProfileData {
 }
 
 const defaultProfile: ProfileData = {
-  name: 'Admin',
-  business_name: 'CV. Maju Bersama',
-  email: 'admin@majubersama.id',
-  phone: '0812-3456-7890',
-  address: 'Jl. Raya No. 10, Jakarta Selatan',
-  website: 'www.majubersama.id',
-  npwp: '01.234.567.8-001.000',
+  name: 'User',
+  ...defaultBusinessProfile,
 };
 
 interface ProfilePageProps {
@@ -33,19 +30,75 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const [profile, setProfile] = useState<ProfileData>(defaultProfile);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ProfileData>(defaultProfile);
+  const [loadingBusiness, setLoadingBusiness] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadBusinessProfile = async () => {
+      if (!session?.user) {
+        if (!mounted) return;
+        setLoadingBusiness(false);
+        return;
+      }
+
+      setLoadingBusiness(true);
+      const business = await getBusinessProfile(session.user.id);
+      const fullName = authProfile?.full_name || session.user.user_metadata?.full_name || session.user.email || 'User';
+
+      if (!mounted) return;
+      const mergedProfile = { name: fullName, ...business };
+      setProfile(mergedProfile);
+      setDraft(mergedProfile);
+      setLoadingBusiness(false);
+    };
+
+    loadBusinessProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, [authProfile?.full_name, session?.user]);
 
   const handleEdit = () => {
     setDraft({ ...profile });
     setEditing(true);
   };
 
-  const handleSave = () => {
-    setProfile({ ...draft });
-    setEditing(false);
+  const handleSave = async () => {
+    if (!session?.user) return;
+
+    setSavingProfile(true);
+
+    await supabase
+      .from('user_profiles')
+      .update({ full_name: draft.name, updated_at: new Date().toISOString() })
+      .eq('user_id', session.user.id);
+
+    const { error } = await supabase
+      .from('business_profiles')
+      .upsert({
+        user_id: session.user.id,
+        business_name: draft.business_name,
+        email: draft.email,
+        phone: draft.phone,
+        address: draft.address,
+        website: draft.website,
+        npwp: draft.npwp,
+        updated_at: new Date().toISOString(),
+      });
+
+    if (!error) {
+      setProfile({ ...draft });
+      setEditing(false);
+    }
+
+    setSavingProfile(false);
   };
 
-  const displayName = authProfile?.full_name || session?.user.user_metadata?.full_name || session?.user.email || profile.name || 'User';
-  const displayEmail = session?.user.email ?? profile.email;
+  const displayName = profile.name || authProfile?.full_name || session?.user.user_metadata?.full_name || session?.user.email || 'User';
+  const displayEmail = profile.email || session?.user.email || '-';
 
   const initials = displayName
     .split(' ')
@@ -62,8 +115,8 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
             <X size={18} className="text-slate-600" />
           </button>
           <h2 className="text-base font-semibold text-slate-800 flex-1">Edit Profil</h2>
-          <button onClick={handleSave} className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">
-            <Check size={14} />Simpan
+          <button onClick={handleSave} disabled={savingProfile} className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all disabled:opacity-50">
+            <Check size={14} />{savingProfile ? 'Menyimpan...' : 'Simpan'}
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -102,7 +155,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           </div>
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-bold text-slate-800">{displayName}</h2>
-            <p className="text-sm text-slate-500 truncate">{profile.business_name}</p>
+            <p className="text-sm text-slate-500 truncate">{loadingBusiness ? 'Memuat informasi bisnis...' : profile.business_name}</p>
             <p className="text-xs text-slate-400 truncate">{displayEmail}</p>
             <p className="text-[11px] text-blue-600 font-semibold uppercase tracking-wide mt-0.5">Role: {role}</p>
           </div>
@@ -120,12 +173,12 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           <div className="px-4 py-2.5 border-b border-slate-50">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Informasi Bisnis</p>
           </div>
-          <ProfileItem icon={<Building2 size={15} />} label="Perusahaan" value={profile.business_name} />
-          <ProfileItem icon={<Mail size={15} />} label="Email" value={displayEmail} />
-          <ProfileItem icon={<Phone size={15} />} label="Telepon" value={profile.phone} />
-          <ProfileItem icon={<MapPin size={15} />} label="Alamat" value={profile.address} />
-          <ProfileItem icon={<Globe size={15} />} label="Website" value={profile.website} />
-          <ProfileItem icon={<User size={15} />} label="NPWP" value={profile.npwp} last />
+          <ProfileItem icon={<Building2 size={15} />} label="Perusahaan" value={loadingBusiness ? 'Memuat...' : profile.business_name} />
+          <ProfileItem icon={<Mail size={15} />} label="Email" value={loadingBusiness ? 'Memuat...' : profile.email} />
+          <ProfileItem icon={<Phone size={15} />} label="Telepon" value={loadingBusiness ? 'Memuat...' : profile.phone} />
+          <ProfileItem icon={<MapPin size={15} />} label="Alamat" value={loadingBusiness ? 'Memuat...' : profile.address} />
+          <ProfileItem icon={<Globe size={15} />} label="Website" value={loadingBusiness ? 'Memuat...' : (profile.website || '-')} />
+          <ProfileItem icon={<User size={15} />} label="NPWP" value={loadingBusiness ? 'Memuat...' : (profile.npwp || '-')} last />
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">

@@ -124,7 +124,7 @@ export default function DocumentPrintTemplate({
           <div className="flex justify-between"><span>Subtotal</span><span>{formatIDR(subtotal)}</span></div>
           <div className="flex justify-between"><span>PPN {taxRate}%</span><span>{formatIDR(taxAmount)}</span></div>
           <div className="flex justify-between font-bold text-[24px] pt-3 mt-2 border-t border-[#4a4a4a]">
-            <span>Balance Due</span>
+            <span>Total</span>
             <span className="text-[#a68f2d]">{formatIDR(total)}</span>
           </div>
         </div>

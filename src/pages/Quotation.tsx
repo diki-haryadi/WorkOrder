@@ -7,6 +7,7 @@ import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../context/AuthContext';
 import PrintTemplate from '../components/PrintTemplate';
+import { BusinessProfileFormData, defaultBusinessProfile, getBusinessProfile } from '../lib/businessProfile';
 
 type View = 'list' | 'form' | 'detail';
 
@@ -18,7 +19,7 @@ const generateNumber = () => `QT-${Date.now().toString().slice(-6)}`;
 const newLineItem = (): LineItem => ({ id: crypto.randomUUID(), description: '', qty: 1, unit_price: 0, amount: 0 });
 
 export default function QuotationPage() {
-  const { role } = useAuth();
+  const { role, session } = useAuth();
   const isAdmin = role === 'admin';
   const [view, setView] = useState<View>('list');
   const [items, setItems] = useState<Quotation[]>([]);
@@ -28,6 +29,7 @@ export default function QuotationPage() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfileFormData>(defaultBusinessProfile);
   const quotationPdfRef = useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = useState<Partial<Quotation>>({
@@ -63,6 +65,22 @@ export default function QuotationPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadBusiness = async () => {
+      const data = await getBusinessProfile(session?.user?.id);
+      if (!mounted) return;
+      setBusinessProfile(data);
+    };
+
+    loadBusiness();
+
+    return () => {
+      mounted = false;
+    };
+  }, [session?.user?.id]);
 
   const recalculate = (lineItems: LineItem[], taxRate: number) => {
     const subtotal = lineItems.reduce((acc, i) => acc + i.amount, 0);
@@ -437,6 +455,10 @@ export default function QuotationPage() {
               taxAmount={selected.tax_amount}
               total={selected.total}
               notes={selected.notes}
+              businessName={businessProfile.business_name}
+              businessAddress={businessProfile.address}
+              businessEmail={businessProfile.email}
+              businessPhone={businessProfile.phone}
             />
           </div>
         </div>
