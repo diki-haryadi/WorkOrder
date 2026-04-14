@@ -51,12 +51,17 @@ export default function WorkOrderPage() {
   };
 
   const loadMasterProductsServices = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('master_products_services')
       .select('*')
       .eq('is_active', true)
       .order('category', { ascending: true })
       .order('name', { ascending: true });
+    if (error) {
+      console.error('Failed to load master products/services:', error.message);
+      setMasterProductsServices([]);
+      return;
+    }
     setMasterProductsServices((data ?? []).map(d => ({ ...d, default_price: Number(d.default_price ?? 0) })));
   };
 
