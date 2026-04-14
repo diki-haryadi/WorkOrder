@@ -62,7 +62,7 @@ export interface Quotation {
   tax_amount: number;
   total: number;
   status: QuotationStatus;
-  valid_until: string | null;
+  valid_until: string | "";
   notes: string;
   created_at: string;
 }
