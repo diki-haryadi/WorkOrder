@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Search, FileText, X, ChevronRight, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Quotation, QuotationStatus, LineItem } from '../types';
+import { Quotation, QuotationStatus, LineItem, WorkOrder, WorkOrderRepairItem } from '../types';
 import StatusBadge from '../components/StatusBadge';
 import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
@@ -18,6 +18,7 @@ const newLineItem = (): LineItem => ({ id: crypto.randomUUID(), description: '',
 export default function QuotationPage() {
   const [view, setView] = useState<View>('list');
   const [items, setItems] = useState<Quotation[]>([]);
+  const [readyWorkOrders, setReadyWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Quotation | null>(null);
   const [search, setSearch] = useState('');
@@ -25,6 +26,7 @@ export default function QuotationPage() {
 
   const [form, setForm] = useState<Partial<Quotation>>({
     quotation_number: '',
+    work_order_id: null,
     customer_name: '',
     customer_email: '',
     customer_phone: '',
@@ -40,8 +42,17 @@ export default function QuotationPage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('quotations').select('*').order('created_at', { ascending: false });
-    setItems((data ?? []).map(d => ({ ...d, items: Array.isArray(d.items) ? d.items : [] })));
+    const [{ data: quotationData }, { data: workOrderData }] = await Promise.all([
+      supabase.from('quotations').select('*').order('created_at', { ascending: false }),
+      supabase
+        .from('work_orders')
+        .select('*')
+        .eq('status', 'ready_to_quotation')
+        .order('created_at', { ascending: false }),
+    ]);
+
+    setItems((quotationData ?? []).map(d => ({ ...d, items: Array.isArray(d.items) ? d.items : [], work_order_id: d.work_order_id ?? null })));
+    setReadyWorkOrders(workOrderData ?? []);
     setLoading(false);
   };
 
@@ -78,7 +89,7 @@ export default function QuotationPage() {
   };
 
   const openCreate = () => {
-    setForm({ quotation_number: generateNumber(), customer_name: '', customer_email: '', customer_phone: '', items: [newLineItem()], subtotal: 0, tax_rate: 11, tax_amount: 0, total: 0, status: 'draft', valid_until: '', notes: '' });
+    setForm({ quotation_number: generateNumber(), work_order_id: null, customer_name: '', customer_email: '', customer_phone: '', items: [newLineItem()], subtotal: 0, tax_rate: 11, tax_amount: 0, total: 0, status: 'draft', valid_until: '', notes: '' });
     setSelected(null);
     setView('form');
   };
@@ -89,14 +100,64 @@ export default function QuotationPage() {
     setView('form');
   };
 
+  const createFromWorkOrder = async (workOrder: WorkOrder) => {
+    const { data } = await supabase
+      .from('work_order_items')
+      .select('*')
+      .eq('work_order_id', workOrder.id)
+      .order('created_at', { ascending: true });
+
+    const fromRepairItems = (data ?? []).map((entry: WorkOrderRepairItem) => ({
+      id: crypto.randomUUID(),
+      description: entry.item_name_snapshot || '-',
+      qty: Number(entry.qty ?? 1),
+      unit_price: Number(entry.price ?? 0),
+      amount: Number(entry.qty ?? 1) * Number(entry.price ?? 0),
+    }));
+
+    const lineItems = fromRepairItems.length > 0 ? fromRepairItems : [newLineItem()];
+    const calcs = recalculate(lineItems, 11);
+
+    setForm({
+      quotation_number: generateNumber(),
+      work_order_id: workOrder.id,
+      customer_name: workOrder.customer_name,
+      customer_email: '',
+      customer_phone: workOrder.customer_phone ?? '',
+      items: lineItems,
+      status: 'draft',
+      tax_rate: 11,
+      valid_until: '',
+      notes: workOrder.description ?? '',
+      ...calcs,
+    });
+    setSelected(null);
+    setView('form');
+  };
+
+  const markReadyToInvoice = async (quotationId: string) => {
+    await supabase.from('quotations').update({ status: 'ready_to_invoice' }).eq('id', quotationId);
+    if (selected?.id === quotationId) {
+      setSelected(prev => prev ? { ...prev, status: 'ready_to_invoice' } : prev);
+    }
+    await load();
+  };
+
   const handleSave = async () => {
     if (!form.customer_name) return;
     setSaving(true);
-    const payload = { ...form };
+    const payload = { ...form, work_order_id: form.work_order_id ?? null };
     if (selected) {
       await supabase.from('quotations').update(payload).eq('id', selected.id);
     } else {
-      await supabase.from('quotations').insert(payload);
+      const { data: createdQuotation } = await supabase.from('quotations').insert(payload).select('id, work_order_id').single();
+      if (createdQuotation?.work_order_id) {
+        await supabase
+          .from('work_orders')
+          .update({ status: 'in_progress', updated_at: new Date().toISOString() })
+          .eq('id', createdQuotation.work_order_id)
+          .eq('status', 'ready_to_quotation');
+      }
     }
     await load();
     setSaving(false);
@@ -136,6 +197,7 @@ export default function QuotationPage() {
               <Select value={form.status ?? 'draft'} onChange={e => setForm(f => ({ ...f, status: e.target.value as QuotationStatus }))}>
                 <option value="draft">Draft</option>
                 <option value="sent">Sent</option>
+                <option value="ready_to_invoice">Ready to Invoice</option>
                 <option value="accepted">Accepted</option>
                 <option value="rejected">Rejected</option>
               </Select>
@@ -266,6 +328,17 @@ export default function QuotationPage() {
               <span className="text-base font-bold text-slate-800">{selected.customer_name}</span>
               <StatusBadge status={selected.status} />
             </div>
+            {selected.status !== 'ready_to_invoice' && (
+              <button
+                onClick={() => markReadyToInvoice(selected.id)}
+                className="w-full px-3 py-2 rounded-xl bg-violet-50 text-violet-700 text-sm font-semibold hover:bg-violet-100 active:scale-[0.99] transition-all"
+              >
+                Set Ready to Create Invoice
+              </button>
+            )}
+            {selected.work_order_id && (
+              <p className="text-xs text-slate-400">Sumber Work Order: {selected.work_order_id.slice(0, 8)}</p>
+            )}
             {selected.customer_email && <p className="text-xs text-slate-400">{selected.customer_email}</p>}
             {selected.customer_phone && <p className="text-xs text-slate-400">{selected.customer_phone}</p>}
             {selected.valid_until && <p className="text-xs text-slate-400">Berlaku s/d {new Date(selected.valid_until).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
@@ -313,6 +386,28 @@ export default function QuotationPage() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+        {!loading && readyWorkOrders.length > 0 && (
+          <div className="space-y-2 mb-3">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Ready dari Work Order</h3>
+            {readyWorkOrders.map(workOrder => (
+              <div key={workOrder.id} className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{workOrder.title}</p>
+                    <p className="text-xs text-slate-500">{workOrder.customer_name}</p>
+                  </div>
+                  <button
+                    onClick={() => createFromWorkOrder(workOrder)}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 active:scale-95 transition-all"
+                  >
+                    Buat Quotation
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">

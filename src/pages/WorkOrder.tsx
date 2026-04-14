@@ -1,16 +1,29 @@
-import { useEffect, useState } from 'react';
-import { Plus, Search, ClipboardList, X, ChevronRight, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus, Search, ClipboardList, X, ChevronRight, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { WorkOrder, WorkOrderStatus, WorkOrderPriority } from '../types';
+import { MasterProductService, WorkOrder, WorkOrderStatus, WorkOrderPriority, WorkOrderRepairItem } from '../types';
 import StatusBadge from '../components/StatusBadge';
 import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
 
 type View = 'list' | 'form' | 'detail';
 
+const formatIDR = (v: number) =>
+  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
+
+const newRepairItem = (): WorkOrderRepairItem => ({
+  id: crypto.randomUUID(),
+  master_product_service_id: null,
+  item_name_snapshot: '',
+  qty: 1,
+  price: 0,
+});
+
 export default function WorkOrderPage() {
   const [view, setView] = useState<View>('list');
   const [items, setItems] = useState<WorkOrder[]>([]);
+  const [masterProductsServices, setMasterProductsServices] = useState<MasterProductService[]>([]);
+  const [repairItems, setRepairItems] = useState<WorkOrderRepairItem[]>([newRepairItem()]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<WorkOrder | null>(null);
   const [search, setSearch] = useState('');
@@ -37,34 +50,158 @@ export default function WorkOrderPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  const loadMasterProductsServices = async () => {
+    const { data } = await supabase
+      .from('master_products_services')
+      .select('*')
+      .eq('is_active', true)
+      .order('category', { ascending: true })
+      .order('name', { ascending: true });
+    setMasterProductsServices((data ?? []).map(d => ({ ...d, default_price: Number(d.default_price ?? 0) })));
+  };
+
+  const loadRepairItems = async (workOrderId: string) => {
+    const { data } = await supabase
+      .from('work_order_items')
+      .select('*')
+      .eq('work_order_id', workOrderId)
+      .order('created_at', { ascending: true });
+
+    return (data ?? []).map(d => ({
+      ...d,
+      qty: Number(d.qty ?? 1),
+      price: Number(d.price ?? 0),
+    })) as WorkOrderRepairItem[];
+  };
+
+  useEffect(() => {
+    load();
+    loadMasterProductsServices();
+  }, []);
+
+  const groupedMasterItems = useMemo(() => {
+    return masterProductsServices.reduce<Record<string, MasterProductService[]>>((acc, item) => {
+      if (!acc[item.category]) acc[item.category] = [];
+      acc[item.category].push(item);
+      return acc;
+    }, {});
+  }, [masterProductsServices]);
+
+  const upsertRepairItem = (id: string, field: keyof WorkOrderRepairItem, value: string | number | null) => {
+    setRepairItems(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        if (field === 'price' || field === 'qty') {
+          return { ...item, [field]: Number(value || 0) };
+        }
+        return { ...item, [field]: value };
+      })
+    );
+  };
+
+  const selectMasterItem = (id: string, masterId: string) => {
+    const selectedMaster = masterProductsServices.find(master => master.id === masterId);
+    if (!selectedMaster) {
+      setRepairItems(prev =>
+        prev.map(item =>
+          item.id === id ? { ...item, master_product_service_id: null } : item
+        )
+      );
+      return;
+    }
+
+    setRepairItems(prev =>
+      prev.map(item =>
+        item.id === id
+          ? {
+            ...item,
+            master_product_service_id: selectedMaster.id,
+            item_name_snapshot: selectedMaster.name,
+            price: Number(selectedMaster.default_price ?? 0),
+          }
+          : item
+      )
+    );
+  };
+
+  const addRepairItem = () => setRepairItems(prev => [...prev, newRepairItem()]);
+
+  const removeRepairItem = (id: string) => {
+    setRepairItems(prev => {
+      if (prev.length <= 1) return prev;
+      return prev.filter(item => item.id !== id);
+    });
+  };
+
+  const getRepairItemsForSave = () =>
+    repairItems
+      .filter(item => item.item_name_snapshot.trim() || Number(item.price) > 0)
+      .map(item => ({
+        ...item,
+        qty: Number(item.qty || 1),
+        price: Number(item.price || 0),
+      }));
 
   const openCreate = () => {
     setForm({ title: '', customer_name: '', customer_phone: '', customer_address: '', description: '', status: 'pending', priority: 'medium', scheduled_date: '' });
+    setRepairItems([newRepairItem()]);
     setSelected(null);
     setView('form');
   };
 
-  const openEdit = (item: WorkOrder) => {
+  const openEdit = async (item: WorkOrder) => {
+    const detailItems = await loadRepairItems(item.id);
     setForm({ ...item });
+    setRepairItems(detailItems.length > 0 ? detailItems : [newRepairItem()]);
     setSelected(item);
     setView('form');
   };
 
-  const openDetail = (item: WorkOrder) => {
-    setSelected(item);
+  const openDetail = async (item: WorkOrder) => {
+    const detailItems = await loadRepairItems(item.id);
+    setSelected({ ...item, repair_items: detailItems });
     setView('detail');
   };
 
   const handleSave = async () => {
     if (!form.title || !form.customer_name) return;
     setSaving(true);
+    const payload = {
+      title: form.title ?? '',
+      customer_name: form.customer_name ?? '',
+      customer_phone: form.customer_phone ?? '',
+      customer_address: form.customer_address ?? '',
+      description: form.description ?? '',
+      status: form.status ?? 'pending',
+      priority: form.priority ?? 'medium',
+      scheduled_date: form.scheduled_date || null,
+    };
+    const detailItemsPayload = getRepairItemsForSave().map(item => ({
+      master_product_service_id: item.master_product_service_id,
+      item_name_snapshot: item.item_name_snapshot.trim(),
+      qty: item.qty,
+      price: item.price,
+    }));
+
     if (selected) {
-      await supabase.from('work_orders').update({ ...form, updated_at: new Date().toISOString() }).eq('id', selected.id);
+      await supabase.from('work_orders').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', selected.id);
+      await supabase.from('work_order_items').delete().eq('work_order_id', selected.id);
+      if (detailItemsPayload.length > 0) {
+        await supabase.from('work_order_items').insert(detailItemsPayload.map(item => ({ ...item, work_order_id: selected.id })));
+      }
     } else {
-      await supabase.from('work_orders').insert({ ...form });
+      const { data: createdWorkOrder } = await supabase
+        .from('work_orders')
+        .insert(payload)
+        .select('id')
+        .single();
+
+      if (createdWorkOrder?.id && detailItemsPayload.length > 0) {
+        await supabase.from('work_order_items').insert(detailItemsPayload.map(item => ({ ...item, work_order_id: createdWorkOrder.id })));
+      }
     }
     await load();
+    setRepairItems([newRepairItem()]);
     setSaving(false);
     setView('list');
   };
@@ -73,6 +210,18 @@ export default function WorkOrderPage() {
     await supabase.from('work_orders').delete().eq('id', id);
     await load();
     setView('list');
+  };
+
+  const markReadyToQuotation = async (id: string) => {
+    await supabase
+      .from('work_orders')
+      .update({ status: 'ready_to_quotation', updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (selected?.id === id) {
+      setSelected(prev => prev ? { ...prev, status: 'ready_to_quotation' } : prev);
+    }
+    await load();
   };
 
   const filtered = items.filter(i =>
@@ -87,6 +236,9 @@ export default function WorkOrderPage() {
   };
 
   if (view === 'form') {
+    const filledRepairItems = getRepairItemsForSave();
+    const repairSubtotal = filledRepairItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
+
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 bg-white sticky top-0 z-10">
@@ -120,11 +272,81 @@ export default function WorkOrderPage() {
           <FormField label="Deskripsi Pekerjaan">
             <Textarea rows={3} placeholder="Detail pekerjaan yang akan dilakukan..." value={form.description ?? ''} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </FormField>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-700">Komponen/Jasa Perbaikan</label>
+              <button onClick={addRepairItem} className="flex items-center gap-1 text-xs text-blue-600 font-medium">
+                <PlusCircle size={14} /> Tambah
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {repairItems.map((item, idx) => (
+                <div key={item.id} className="bg-slate-50 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">Item {idx + 1}</span>
+                    {repairItems.length > 1 && (
+                      <button onClick={() => removeRepairItem(item.id)} className="text-red-400">
+                        <MinusCircle size={15} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 mb-1">Pilih dari Master (opsional)</p>
+                    <Select
+                      value={item.master_product_service_id ?? ''}
+                      onChange={e => selectMasterItem(item.id, e.target.value)}
+                    >
+                      <option value="">Manual input</option>
+                      {Object.entries(groupedMasterItems).map(([category, entries]) => (
+                        <optgroup key={category} label={category}>
+                          {entries.map(master => (
+                            <option key={master.id} value={master.id}>
+                              {master.name} ({formatIDR(master.default_price)})
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <p className="text-xs text-slate-400 mb-1">Nama produk/jasa</p>
+                      <Input
+                        placeholder="Contoh: Kampas Rem Depan"
+                        value={item.item_name_snapshot}
+                        onChange={e => upsertRepairItem(item.id, 'item_name_snapshot', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-400 mb-1">Harga</p>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={item.price}
+                        onChange={e => upsertRepairItem(item.id, 'price', Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3 flex items-center justify-between text-sm">
+              <span className="text-slate-500">Subtotal Komponen/Jasa</span>
+              <span className="font-semibold text-slate-800">{formatIDR(repairSubtotal)}</span>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Status">
               <Select value={form.status ?? 'pending'} onChange={e => setForm(f => ({ ...f, status: e.target.value as WorkOrderStatus }))}>
                 <option value="pending">Pending</option>
                 <option value="in_progress">In Progress</option>
+                <option value="ready_to_quotation">Ready to Quotation</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
               </Select>
@@ -173,6 +395,14 @@ export default function WorkOrderPage() {
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${priorityColor[selected.priority]}`}>
               Prioritas: {selected.priority === 'low' ? 'Rendah' : selected.priority === 'medium' ? 'Sedang' : 'Tinggi'}
             </span>
+            {selected.status !== 'ready_to_quotation' && (
+              <button
+                onClick={() => markReadyToQuotation(selected.id)}
+                className="w-full mt-1 px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-sm font-semibold hover:bg-indigo-100 active:scale-[0.99] transition-all"
+              >
+                Set Ready to Quotation
+              </button>
+            )}
           </div>
           <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3">
             <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Informasi Pelanggan</h4>
@@ -186,6 +416,30 @@ export default function WorkOrderPage() {
               <p className="text-sm text-slate-700 leading-relaxed">{selected.description}</p>
             </div>
           )}
+          <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-2">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Komponen/Jasa Perbaikan</h4>
+            {(selected.repair_items ?? []).length === 0 ? (
+              <p className="text-sm text-slate-500">Belum ada item komponen/jasa.</p>
+            ) : (
+              <>
+                {(selected.repair_items ?? []).map((item, index) => (
+                  <div key={item.id || `${index}-${item.item_name_snapshot}`} className="flex items-start justify-between gap-2 py-2 border-b border-slate-50 last:border-0">
+                    <div className="flex-1">
+                      <p className="text-sm text-slate-700">{item.item_name_snapshot || '-'}</p>
+                      <p className="text-xs text-slate-400">{item.master_product_service_id ? 'Dari master produk/jasa' : 'Manual input'}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{formatIDR(Number(item.price ?? 0))}</span>
+                  </div>
+                ))}
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-sm font-semibold">
+                  <span className="text-slate-600">Subtotal</span>
+                  <span className="text-slate-800">
+                    {formatIDR((selected.repair_items ?? []).reduce((sum, item) => sum + (Number(item.price ?? 0) * Number(item.qty ?? 1)), 0))}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
           <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3">
             <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Jadwal & Waktu</h4>
             <DetailRow label="Tanggal Dijadwalkan" value={selected.scheduled_date ? new Date(selected.scheduled_date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '-'} />

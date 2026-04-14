@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Plus, Search, Receipt, X, ChevronRight, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Search, Receipt, X, ChevronRight, Trash2, PlusCircle, MinusCircle, Download } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Invoice, InvoiceStatus, LineItem } from '../types';
+import { Invoice, InvoiceStatus, LineItem, Quotation } from '../types';
 import StatusBadge from '../components/StatusBadge';
 import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
@@ -17,13 +17,18 @@ const newLineItem = (): LineItem => ({ id: crypto.randomUUID(), description: '',
 export default function InvoicePage() {
   const [view, setView] = useState<View>('list');
   const [items, setItems] = useState<Invoice[]>([]);
+  const [readyQuotations, setReadyQuotations] = useState<Quotation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const invoiceDetailRef = useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = useState<Partial<Invoice>>({
     invoice_number: '',
+    work_order_id: null,
+    quotation_id: null,
     customer_name: '',
     customer_email: '',
     customer_phone: '',
@@ -39,8 +44,16 @@ export default function InvoicePage() {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('invoices').select('*').order('created_at', { ascending: false });
-    setItems((data ?? []).map(d => ({ ...d, items: Array.isArray(d.items) ? d.items : [] })));
+    const [{ data: invoiceData }, { data: quotationData }] = await Promise.all([
+      supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+      supabase
+        .from('quotations')
+        .select('*')
+        .eq('status', 'ready_to_invoice')
+        .order('created_at', { ascending: false }),
+    ]);
+    setItems((invoiceData ?? []).map(d => ({ ...d, items: Array.isArray(d.items) ? d.items : [], quotation_id: d.quotation_id ?? null, work_order_id: d.work_order_id ?? null })));
+    setReadyQuotations((quotationData ?? []).map(d => ({ ...d, items: Array.isArray(d.items) ? d.items : [] })));
     setLoading(false);
   };
 
@@ -77,7 +90,7 @@ export default function InvoicePage() {
   };
 
   const openCreate = () => {
-    setForm({ invoice_number: generateNumber(), customer_name: '', customer_email: '', customer_phone: '', items: [newLineItem()], subtotal: 0, tax_rate: 11, tax_amount: 0, total: 0, status: 'draft', due_date: '', notes: '' });
+    setForm({ invoice_number: generateNumber(), customer_name: '', customer_email: '', customer_phone: '', work_order_id: null, quotation_id: null, items: [newLineItem()], subtotal: 0, tax_rate: 11, tax_amount: 0, total: 0, status: 'draft', due_date: '', notes: '' });
     setSelected(null);
     setView('form');
   };
@@ -88,13 +101,85 @@ export default function InvoicePage() {
     setView('form');
   };
 
+  const createFromQuotation = async (quotation: Quotation) => {
+    const { data: existingInvoice } = await supabase
+      .from('invoices')
+      .select('id')
+      .eq('quotation_id', quotation.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingInvoice?.id) {
+      await load();
+      return;
+    }
+
+    setForm({
+      invoice_number: generateNumber(),
+      customer_name: quotation.customer_name,
+      customer_email: quotation.customer_email ?? '',
+      customer_phone: quotation.customer_phone ?? '',
+      items: Array.isArray(quotation.items) && quotation.items.length > 0
+        ? quotation.items.map(item => ({ ...item, id: crypto.randomUUID() }))
+        : [newLineItem()],
+      subtotal: Number(quotation.subtotal ?? 0),
+      tax_rate: Number(quotation.tax_rate ?? 11),
+      tax_amount: Number(quotation.tax_amount ?? 0),
+      total: Number(quotation.total ?? 0),
+      status: 'draft',
+      due_date: '',
+      notes: quotation.notes ?? '',
+      quotation_id: quotation.id,
+      work_order_id: quotation.work_order_id ?? null,
+    });
+    setSelected(null);
+    setView('form');
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!selected || !invoiceDetailRef.current) return;
+    setExportingPdf(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const canvas = await html2canvas(invoiceDetailRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      });
+
+      const imageData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageHeight = (canvas.height * pageWidth) / canvas.width;
+      const fittedHeight = Math.min(imageHeight, pageHeight - 10);
+
+      pdf.addImage(imageData, 'PNG', 0, 5, pageWidth, fittedHeight);
+      pdf.save(`${selected.invoice_number || 'invoice'}.pdf`);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!form.customer_name) return;
     setSaving(true);
+    const payload = { ...form, quotation_id: form.quotation_id ?? null, work_order_id: form.work_order_id ?? null };
     if (selected) {
-      await supabase.from('invoices').update({ ...form }).eq('id', selected.id);
+      await supabase.from('invoices').update(payload).eq('id', selected.id);
     } else {
-      await supabase.from('invoices').insert({ ...form });
+      const { data: createdInvoice } = await supabase.from('invoices').insert(payload).select('quotation_id').single();
+      if (createdInvoice?.quotation_id) {
+        await supabase
+          .from('quotations')
+          .update({ status: 'sent' })
+          .eq('id', createdInvoice.quotation_id)
+          .eq('status', 'ready_to_invoice');
+      }
     }
     await load();
     setSaving(false);
@@ -245,14 +330,25 @@ export default function InvoicePage() {
             <X size={18} className="text-slate-600" />
           </button>
           <h2 className="text-base font-semibold text-slate-800 flex-1">{selected.invoice_number}</h2>
-          <button onClick={() => openEdit(selected)} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">Edit</button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={exportingPdf}
+              className="px-3 py-1.5 bg-slate-100 text-slate-700 text-sm font-medium rounded-xl disabled:opacity-50 active:scale-95 transition-all inline-flex items-center gap-1"
+            >
+              <Download size={14} />
+              {exportingPdf ? 'Export...' : 'Unduh PDF'}
+            </button>
+            <button onClick={() => openEdit(selected)} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">Edit</button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div ref={invoiceDetailRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-white">
           <div className="bg-white rounded-2xl border border-slate-100 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-base font-bold text-slate-800">{selected.customer_name}</span>
               <StatusBadge status={selected.status} />
             </div>
+            {selected.quotation_id && <p className="text-xs text-slate-400">Sumber Quotation: {selected.quotation_id.slice(0, 8)}</p>}
             {selected.customer_email && <p className="text-xs text-slate-400">{selected.customer_email}</p>}
             {selected.customer_phone && <p className="text-xs text-slate-400">{selected.customer_phone}</p>}
             {selected.due_date && <p className="text-xs text-slate-400">Jatuh tempo: {new Date(selected.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
@@ -300,6 +396,28 @@ export default function InvoicePage() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
+        {!loading && readyQuotations.length > 0 && (
+          <div className="space-y-2 mb-3">
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Ready dari Quotation</h3>
+            {readyQuotations.map(quotation => (
+              <div key={quotation.id} className="bg-violet-50 border border-violet-100 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{quotation.quotation_number}</p>
+                    <p className="text-xs text-slate-500">{quotation.customer_name}</p>
+                  </div>
+                  <button
+                    onClick={() => createFromQuotation(quotation)}
+                    className="px-3 py-1.5 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 active:scale-95 transition-all"
+                  >
+                    Buat Invoice
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="bg-white rounded-2xl border border-slate-100 p-4 animate-pulse">

@@ -13,8 +13,8 @@ import { supabase } from '../lib/supabase';
 import { NavTab } from '../types';
 
 interface Stats {
-  workOrders: { total: number; pending: number; in_progress: number; completed: number };
-  quotations: { total: number; draft: number; sent: number; accepted: number };
+  workOrders: { total: number; pending: number; in_progress: number; ready_to_quotation: number; completed: number };
+  quotations: { total: number; draft: number; sent: number; ready_to_invoice: number; accepted: number };
   invoices: { total: number; draft: number; paid: number; overdue: number; totalRevenue: number };
 }
 
@@ -24,8 +24,8 @@ interface HomeProps {
 
 export default function Home({ onNavigate }: HomeProps) {
   const [stats, setStats] = useState<Stats>({
-    workOrders: { total: 0, pending: 0, in_progress: 0, completed: 0 },
-    quotations: { total: 0, draft: 0, sent: 0, accepted: 0 },
+    workOrders: { total: 0, pending: 0, in_progress: 0, ready_to_quotation: 0, completed: 0 },
+    quotations: { total: 0, draft: 0, sent: 0, ready_to_invoice: 0, accepted: 0 },
     invoices: { total: 0, draft: 0, paid: 0, overdue: 0, totalRevenue: 0 },
   });
   const [loading, setLoading] = useState(true);
@@ -47,12 +47,14 @@ export default function Home({ onNavigate }: HomeProps) {
           total: wo.length,
           pending: wo.filter(r => r.status === 'pending').length,
           in_progress: wo.filter(r => r.status === 'in_progress').length,
+          ready_to_quotation: wo.filter(r => r.status === 'ready_to_quotation').length,
           completed: wo.filter(r => r.status === 'completed').length,
         },
         quotations: {
           total: qt.length,
           draft: qt.filter(r => r.status === 'draft').length,
           sent: qt.filter(r => r.status === 'sent').length,
+          ready_to_invoice: qt.filter(r => r.status === 'ready_to_invoice').length,
           accepted: qt.filter(r => r.status === 'accepted').length,
         },
         invoices: {
@@ -135,6 +137,7 @@ export default function Home({ onNavigate }: HomeProps) {
             label="Work Order"
             items={[
               { icon: <Clock size={11} />, label: 'Pending', value: stats.workOrders.pending, color: 'text-amber-600' },
+              { icon: <AlertCircle size={11} />, label: 'Ready QT', value: stats.workOrders.ready_to_quotation, color: 'text-indigo-600' },
               { icon: <AlertCircle size={11} />, label: 'Proses', value: stats.workOrders.in_progress, color: 'text-blue-600' },
               { icon: <CheckCircle2 size={11} />, label: 'Selesai', value: stats.workOrders.completed, color: 'text-emerald-600' },
             ]}
@@ -146,6 +149,7 @@ export default function Home({ onNavigate }: HomeProps) {
             label="Quotation"
             items={[
               { icon: <Clock size={11} />, label: 'Draft', value: stats.quotations.draft, color: 'text-slate-500' },
+              { icon: <AlertCircle size={11} />, label: 'Ready INV', value: stats.quotations.ready_to_invoice, color: 'text-violet-600' },
               { icon: <AlertCircle size={11} />, label: 'Terkirim', value: stats.quotations.sent, color: 'text-blue-600' },
               { icon: <CheckCircle2 size={11} />, label: 'Diterima', value: stats.quotations.accepted, color: 'text-emerald-600' },
             ]}

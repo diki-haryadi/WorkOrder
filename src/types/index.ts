@@ -1,7 +1,30 @@
-export type WorkOrderStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type WorkOrderStatus = 'pending' | 'in_progress' | 'ready_to_quotation' | 'completed' | 'cancelled';
 export type WorkOrderPriority = 'low' | 'medium' | 'high';
-export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'rejected';
+export type QuotationStatus = 'draft' | 'sent' | 'ready_to_invoice' | 'accepted' | 'rejected';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue';
+
+export interface MasterProductService {
+  id: string;
+  code: string;
+  name: string;
+  kind: 'product' | 'service';
+  category: string;
+  default_price: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkOrderRepairItem {
+  id: string;
+  work_order_id?: string;
+  master_product_service_id: string | null;
+  item_name_snapshot: string;
+  qty: number;
+  price: number;
+  created_at?: string;
+  updated_at?: string;
+}
 
 export interface WorkOrder {
   id: string;
@@ -13,6 +36,7 @@ export interface WorkOrder {
   status: WorkOrderStatus;
   priority: WorkOrderPriority;
   scheduled_date: string | null;
+  repair_items?: WorkOrderRepairItem[];
   created_at: string;
   updated_at: string;
 }
@@ -28,6 +52,7 @@ export interface LineItem {
 export interface Quotation {
   id: string;
   quotation_number: string;
+  work_order_id: string | null;
   customer_name: string;
   customer_email: string;
   customer_phone: string;
