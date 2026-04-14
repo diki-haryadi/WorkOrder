@@ -459,6 +459,10 @@ export default function QuotationPage() {
               businessAddress={businessProfile.address}
               businessEmail={businessProfile.email}
               businessPhone={businessProfile.phone}
+              terms={businessProfile.terms}
+              bankName={businessProfile.bank_name}
+              bankAccountNumber={businessProfile.bank_account_number}
+              bankAccountHolder={businessProfile.bank_account_holder}
             />
           </div>
         </div>

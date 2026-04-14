@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { User, Building2, Mail, Phone, MapPin, Globe, ChevronRight, Bell, Shield, HelpCircle, LogOut, CreditCard as Edit3, X, Check, Boxes } from 'lucide-react';
+import { User, Building2, Mail, Phone, MapPin, Globe, ChevronRight, Bell, Shield, HelpCircle, LogOut, CreditCard as Edit3, X, Check, Boxes, CreditCard } from 'lucide-react';
 import FormField, { Input, Textarea } from '../components/FormField';
 import { useAuth } from '../context/AuthContext';
 import { NavTab } from '../types';
@@ -14,6 +14,10 @@ interface ProfileData {
   address: string;
   website: string;
   npwp: string;
+  terms: string;
+  bank_name: string;
+  bank_account_number: string;
+  bank_account_holder: string;
 }
 
 const defaultProfile: ProfileData = {
@@ -27,6 +31,7 @@ interface ProfilePageProps {
 
 export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   const { session, role, signOut, profile: authProfile } = useAuth();
+  const isAdmin = role === 'admin';
   const [profile, setProfile] = useState<ProfileData>(defaultProfile);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ProfileData>(defaultProfile);
@@ -62,19 +67,15 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
   }, [authProfile?.full_name, session?.user]);
 
   const handleEdit = () => {
+    if (!isAdmin) return;
     setDraft({ ...profile });
     setEditing(true);
   };
 
   const handleSave = async () => {
-    if (!session?.user) return;
+    if (!session?.user || !isAdmin) return;
 
     setSavingProfile(true);
-
-    await supabase
-      .from('user_profiles')
-      .update({ full_name: draft.name, updated_at: new Date().toISOString() })
-      .eq('user_id', session.user.id);
 
     const { error } = await supabase
       .from('business_profiles')
@@ -86,6 +87,10 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
         address: draft.address,
         website: draft.website,
         npwp: draft.npwp,
+        terms: draft.terms,
+        bank_name: draft.bank_name,
+        bank_account_number: draft.bank_account_number,
+        bank_account_holder: draft.bank_account_holder,
         updated_at: new Date().toISOString(),
       });
 
@@ -97,7 +102,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
     setSavingProfile(false);
   };
 
-  const displayName = profile.name || authProfile?.full_name || session?.user.user_metadata?.full_name || session?.user.email || 'User';
+  const displayName = authProfile?.full_name || session?.user.user_metadata?.full_name || session?.user.email || 'User';
   const displayEmail = profile.email || session?.user.email || '-';
 
   const initials = displayName
@@ -107,7 +112,7 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
     .slice(0, 2)
     .toUpperCase();
 
-  if (editing) {
+  if (editing && isAdmin) {
     return (
       <div className="flex flex-col h-full">
         <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 bg-white sticky top-0 z-10">
@@ -120,9 +125,6 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          <FormField label="Nama Lengkap">
-            <Input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
-          </FormField>
           <FormField label="Nama Bisnis / Perusahaan">
             <Input value={draft.business_name} onChange={e => setDraft(d => ({ ...d, business_name: e.target.value }))} />
           </FormField>
@@ -140,6 +142,18 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           </FormField>
           <FormField label="NPWP">
             <Input value={draft.npwp} onChange={e => setDraft(d => ({ ...d, npwp: e.target.value }))} />
+          </FormField>
+          <FormField label="Terms Quotation/Invoice">
+            <Textarea rows={3} value={draft.terms} onChange={e => setDraft(d => ({ ...d, terms: e.target.value }))} />
+          </FormField>
+          <FormField label="Nama Bank">
+            <Input value={draft.bank_name} onChange={e => setDraft(d => ({ ...d, bank_name: e.target.value }))} />
+          </FormField>
+          <FormField label="No. Rekening">
+            <Input value={draft.bank_account_number} onChange={e => setDraft(d => ({ ...d, bank_account_number: e.target.value }))} />
+          </FormField>
+          <FormField label="Nama Penerima">
+            <Input value={draft.bank_account_holder} onChange={e => setDraft(d => ({ ...d, bank_account_holder: e.target.value }))} />
           </FormField>
         </div>
       </div>
@@ -161,7 +175,8 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           </div>
           <button
             onClick={handleEdit}
-            className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 active:scale-95 transition-all flex-shrink-0"
+            disabled={!isAdmin}
+            className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center hover:bg-slate-200 active:scale-95 transition-all flex-shrink-0 disabled:opacity-40"
           >
             <Edit3 size={15} className="text-slate-600" />
           </button>
@@ -178,8 +193,17 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           <ProfileItem icon={<Phone size={15} />} label="Telepon" value={loadingBusiness ? 'Memuat...' : profile.phone} />
           <ProfileItem icon={<MapPin size={15} />} label="Alamat" value={loadingBusiness ? 'Memuat...' : profile.address} />
           <ProfileItem icon={<Globe size={15} />} label="Website" value={loadingBusiness ? 'Memuat...' : (profile.website || '-')} />
-          <ProfileItem icon={<User size={15} />} label="NPWP" value={loadingBusiness ? 'Memuat...' : (profile.npwp || '-')} last />
+          <ProfileItem icon={<User size={15} />} label="NPWP" value={loadingBusiness ? 'Memuat...' : (profile.npwp || '-')} />
+          <ProfileItem icon={<Shield size={15} />} label="Terms Dokumen" value={loadingBusiness ? 'Memuat...' : (profile.terms || '-')} />
+          <ProfileItem icon={<Building2 size={15} />} label="Nama Bank" value={loadingBusiness ? 'Memuat...' : (profile.bank_name || '-')} />
+          <ProfileItem icon={<CreditCard size={15} />} label="No. Rekening" value={loadingBusiness ? 'Memuat...' : (profile.bank_account_number || '-')} />
+          <ProfileItem icon={<User size={15} />} label="Nama Penerima" value={loadingBusiness ? 'Memuat...' : (profile.bank_account_holder || '-')} last />
         </div>
+        {!isAdmin && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+            Informasi bisnis hanya dapat diedit oleh admin.
+          </p>
+        )}
 
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <div className="px-4 py-2.5 border-b border-slate-50">

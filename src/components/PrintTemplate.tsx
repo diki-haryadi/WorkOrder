@@ -19,6 +19,10 @@ interface PrintTemplateProps {
   businessAddress?: string | null;
   businessEmail?: string | null;
   businessPhone?: string | null;
+  terms?: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolder?: string | null;
 }
 
 const formatIDR = (value: number) =>
@@ -50,6 +54,10 @@ export default function PrintTemplate({
   businessAddress,
   businessEmail,
   businessPhone,
+  terms,
+  bankName,
+  bankAccountNumber,
+  bankAccountHolder,
 }: PrintTemplateProps) {
   return (
     <div
@@ -126,7 +134,15 @@ export default function PrintTemplate({
         <div>
           {notes ? <p className="mb-4">{notes}</p> : null}
           <p className="font-bold mb-2">Terms</p>
-          <p>Semua pekerjaan dijamin hingga 30 hari. Hubungi kami jika ada pertanyaan terkait layanan ini.</p>
+          <p>{terms || 'Semua pekerjaan dijamin hingga 30 hari. Hubungi kami jika ada pertanyaan terkait layanan ini.'}</p>
+          {(bankName || bankAccountNumber || bankAccountHolder) ? (
+            <div className="mt-4">
+              <p className="font-bold mb-1">Pembayaran</p>
+              {bankName ? <p>Bank: {bankName}</p> : null}
+              {bankAccountNumber ? <p>No. Rekening: {bankAccountNumber}</p> : null}
+              {bankAccountHolder ? <p>Nama Penerima: {bankAccountHolder}</p> : null}
+            </div>
+          ) : null}
         </div>
         <div className="border-l border-r border-[#4a4a4a] px-4 py-2 space-y-2">
           <div className="flex justify-between"><span>Subtotal</span><span>{formatIDR(subtotal)}</span></div>
