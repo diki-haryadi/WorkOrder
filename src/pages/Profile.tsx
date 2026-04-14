@@ -185,13 +185,11 @@ export default function ProfilePage({ onNavigate }: ProfilePageProps) {
           <div className="px-4 py-2.5 border-b border-slate-50">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Pengaturan</p>
           </div>
-          {role === 'admin' && (
-            <MenuRow
-              icon={<Boxes size={15} className="text-violet-500" />}
-              label="Master Produk & Jasa"
-              onClick={() => onNavigate?.('master_products_services')}
-            />
-          )}
+          <MenuRow
+            icon={<Boxes size={15} className="text-violet-500" />}
+            label="Master Produk & Jasa"
+            onClick={() => onNavigate?.('master_products_services')}
+          />
           <MenuRow icon={<Bell size={15} className="text-blue-500" />} label="Notifikasi" />
           <MenuRow icon={<Shield size={15} className="text-emerald-500" />} label="Keamanan & Privasi" />
           <MenuRow icon={<HelpCircle size={15} className="text-amber-500" />} label="Bantuan & Dukungan" last />

@@ -20,8 +20,7 @@ const newFormState: Partial<MasterProductService> = {
 };
 
 export default function MasterProductsServicesPage({ onBack }: MasterProductsServicesPageProps) {
-  const { role } = useAuth();
-  const isAdmin = role === 'admin';
+  useAuth();
   const [items, setItems] = useState<MasterProductService[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -30,7 +29,6 @@ export default function MasterProductsServicesPage({ onBack }: MasterProductsSer
   const [form, setForm] = useState<Partial<MasterProductService>>(newFormState);
 
   const load = async () => {
-    if (!isAdmin) return;
     setLoading(true);
     const { data } = await supabase
       .from('master_products_services')
@@ -42,7 +40,7 @@ export default function MasterProductsServicesPage({ onBack }: MasterProductsSer
 
   useEffect(() => {
     load();
-  }, [isAdmin]);
+  }, []);
 
   const filtered = useMemo(() => items.filter(item => {
     const keyword = search.toLowerCase();
@@ -64,7 +62,7 @@ export default function MasterProductsServicesPage({ onBack }: MasterProductsSer
   };
 
   const handleSave = async () => {
-    if (!isAdmin || !form.code || !form.name || !form.kind) return;
+    if (!form.code || !form.name || !form.kind) return;
     setSaving(true);
     const payload = {
       code: form.code.trim().toUpperCase(),
@@ -87,29 +85,10 @@ export default function MasterProductsServicesPage({ onBack }: MasterProductsSer
   };
 
   const handleDelete = async (id: string) => {
-    if (!isAdmin) return;
     await supabase.from('master_products_services').delete().eq('id', id);
     await load();
     if (editingId === id) resetForm();
   };
-
-  if (!isAdmin) {
-    return (
-      <div className="flex flex-col h-full">
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-100 bg-white sticky top-0 z-10">
-          <button onClick={onBack} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors">
-            <ArrowLeft size={18} className="text-slate-600" />
-          </button>
-          <h2 className="text-base font-semibold text-slate-800">Master Produk & Jasa</h2>
-        </div>
-        <div className="px-4 py-6">
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-3">
-            Halaman ini hanya dapat diakses oleh admin.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-full">
