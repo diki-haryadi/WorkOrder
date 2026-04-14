@@ -47,13 +47,13 @@ export default function App() {
     }
   };
 
-  if (loading && !authBootTimedOut) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-sm text-slate-500">Memuat sesi pengguna...</p>
-      </div>
-    );
-  }
+  // if (loading && !authBootTimedOut) {
+  //   return (
+  //     <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+  //       <p className="text-sm text-slate-500">Memuat sesi pengguna...</p>
+  //     </div>
+  //   );
+  // }
 
   if (!session) {
     return <LoginPage />;
