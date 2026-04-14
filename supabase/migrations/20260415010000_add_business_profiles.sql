@@ -36,6 +36,8 @@ CREATE POLICY "Users can insert own business profile"
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+
+
 DROP POLICY IF EXISTS "Users can update own business profile" ON public.business_profiles;
 CREATE POLICY "Users can update own business profile"
   ON public.business_profiles
