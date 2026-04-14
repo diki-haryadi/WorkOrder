@@ -18,12 +18,25 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const AUTH_STORAGE_KEY = 'workorder-auth';
+
+const getCachedSession = (): Session | null => {
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { currentSession?: Session | null };
+    return parsed.currentSession ?? null;
+  } catch {
+    return null;
+  }
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const cachedSession = getCachedSession();
+  const [session, setSession] = useState<Session | null>(cachedSession);
   const [role, setRole] = useState<UserRole>('mekanik');
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedSession);
   const AUTH_BOOT_TIMEOUT_MS = 6000;
 
   const resolveRole = async (currentSession: Session | null) => {
@@ -79,6 +92,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+
+    if (cachedSession) {
+      withTimeout(resolveRole(cachedSession), AUTH_BOOT_TIMEOUT_MS).catch(() => {
+        if (!mounted) return;
+        setRole('mekanik');
+        setProfile(null);
+      });
+    }
+
     withTimeout(supabase.auth.getSession(), AUTH_BOOT_TIMEOUT_MS)
       .then(async (result) => {
         if (!mounted) return;
@@ -98,7 +120,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       if (!mounted) return;
-      setLoading(true);
       try {
         setSession(nextSession);
         await withTimeout(resolveRole(nextSession), AUTH_BOOT_TIMEOUT_MS);
