@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavTab } from './types';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
@@ -13,6 +13,22 @@ import MasterProductsServicesPage from './pages/MasterProductsServices';
 export default function App() {
   const { session, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [authBootTimedOut, setAuthBootTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (!loading) {
+      setAuthBootTimedOut(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setAuthBootTimedOut(true);
+    }, 8000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [loading]);
 
   const renderPage = () => {
     switch (activeTab) {
@@ -31,7 +47,7 @@ export default function App() {
     }
   };
 
-  if (loading) {
+  if (loading && !authBootTimedOut) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <p className="text-sm text-slate-500">Memuat sesi pengguna...</p>
