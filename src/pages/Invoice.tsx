@@ -5,6 +5,7 @@ import { Invoice, InvoiceStatus, LineItem, Quotation } from '../types';
 import StatusBadge from '../components/StatusBadge';
 import FormField, { Input, Textarea, Select } from '../components/FormField';
 import EmptyState from '../components/EmptyState';
+import { useAuth } from '../context/AuthContext';
 
 type View = 'list' | 'form' | 'detail';
 
@@ -15,6 +16,8 @@ const generateNumber = () => `INV-${Date.now().toString().slice(-6)}`;
 const newLineItem = (): LineItem => ({ id: crypto.randomUUID(), description: '', qty: 1, unit_price: 0, amount: 0 });
 
 export default function InvoicePage() {
+  const { role } = useAuth();
+  const isAdmin = role === 'admin';
   const [view, setView] = useState<View>('list');
   const [items, setItems] = useState<Invoice[]>([]);
   const [readyQuotations, setReadyQuotations] = useState<Quotation[]>([]);
@@ -90,18 +93,21 @@ export default function InvoicePage() {
   };
 
   const openCreate = () => {
+    if (!isAdmin) return;
     setForm({ invoice_number: generateNumber(), customer_name: '', customer_email: '', customer_phone: '', work_order_id: null, quotation_id: null, items: [newLineItem()], subtotal: 0, tax_rate: 11, tax_amount: 0, total: 0, status: 'draft', due_date: '', notes: '' });
     setSelected(null);
     setView('form');
   };
 
   const openEdit = (item: Invoice) => {
+    if (!isAdmin) return;
     setForm({ ...item, items: Array.isArray(item.items) ? item.items : [newLineItem()] });
     setSelected(item);
     setView('form');
   };
 
   const createFromQuotation = async (quotation: Quotation) => {
+    if (!isAdmin) return;
     const { data: existingInvoice } = await supabase
       .from('invoices')
       .select('id')
@@ -166,6 +172,7 @@ export default function InvoicePage() {
   };
 
   const handleSave = async () => {
+    if (!isAdmin) return;
     if (!form.customer_name) return;
     setSaving(true);
     const payload = { ...form, quotation_id: form.quotation_id ?? null, work_order_id: form.work_order_id ?? null };
@@ -187,6 +194,7 @@ export default function InvoicePage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!isAdmin) return;
     await supabase.from('invoices').delete().eq('id', id);
     await load();
     setView('list');
@@ -339,7 +347,9 @@ export default function InvoicePage() {
               <Download size={14} />
               {exportingPdf ? 'Export...' : 'Unduh PDF'}
             </button>
-            <button onClick={() => openEdit(selected)} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">Edit</button>
+            {isAdmin && (
+              <button onClick={() => openEdit(selected)} className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">Edit</button>
+            )}
           </div>
         </div>
         <div ref={invoiceDetailRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-white">
@@ -386,10 +396,17 @@ export default function InvoicePage() {
       <div className="px-4 py-4 bg-white border-b border-slate-100 sticky top-0 z-10 space-y-3">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-bold text-slate-800">Invoice</h1>
-          <button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">
-            <Plus size={15} />Baru
-          </button>
+          {isAdmin && (
+            <button onClick={openCreate} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all">
+              <Plus size={15} />Baru
+            </button>
+          )}
         </div>
+        {!isAdmin && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+            Role mekanik hanya dapat melihat data invoice.
+          </p>
+        )}
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input type="text" placeholder="Cari invoice..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-slate-50" />
@@ -406,12 +423,14 @@ export default function InvoicePage() {
                     <p className="text-sm font-semibold text-slate-800 truncate">{quotation.quotation_number}</p>
                     <p className="text-xs text-slate-500">{quotation.customer_name}</p>
                   </div>
-                  <button
-                    onClick={() => createFromQuotation(quotation)}
-                    className="px-3 py-1.5 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 active:scale-95 transition-all"
-                  >
-                    Buat Invoice
-                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => createFromQuotation(quotation)}
+                      className="px-3 py-1.5 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 active:scale-95 transition-all"
+                    >
+                      Buat Invoice
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -425,7 +444,7 @@ export default function InvoicePage() {
             </div>
           ))
         ) : filtered.length === 0 ? (
-          <EmptyState icon={<Receipt size={28} />} title="Belum ada Invoice" description="Buat invoice untuk menagih pembayaran pelanggan" action={<button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all"><Plus size={15} />Buat Invoice</button>} />
+          <EmptyState icon={<Receipt size={28} />} title="Belum ada Invoice" description="Buat invoice untuk menagih pembayaran pelanggan" action={isAdmin ? <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl active:scale-95 transition-all"><Plus size={15} />Buat Invoice</button> : undefined} />
         ) : (
           filtered.map(item => (
             <button key={item.id} onClick={() => { setSelected(item); setView('detail'); }} className={`w-full bg-white rounded-2xl border border-slate-100 border-l-4 ${statusColor[item.status]} p-4 text-left hover:shadow-sm active:scale-[0.99] transition-all`}>

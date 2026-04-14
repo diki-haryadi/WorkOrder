@@ -6,8 +6,12 @@ import WorkOrderPage from './pages/WorkOrder';
 import QuotationPage from './pages/Quotation';
 import InvoicePage from './pages/Invoice';
 import ProfilePage from './pages/Profile';
+import LoginPage from './pages/Login';
+import { useAuth } from './context/AuthContext';
+import MasterProductsServicesPage from './pages/MasterProductsServices';
 
 export default function App() {
+  const { session, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<NavTab>('home');
 
   const renderPage = () => {
@@ -21,9 +25,23 @@ export default function App() {
       case 'invoice':
         return <InvoicePage />;
       case 'profile':
-        return <ProfilePage />;
+        return <ProfilePage onNavigate={setActiveTab} />;
+      case 'master_products_services':
+        return <MasterProductsServicesPage onBack={() => setActiveTab('profile')} />;
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <p className="text-sm text-slate-500">Memuat sesi pengguna...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginPage />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { User, Building2, Mail, Phone, MapPin, Globe, ChevronRight, Bell, Shield, HelpCircle, LogOut, CreditCard as Edit3, X, Check } from 'lucide-react';
+import { User, Building2, Mail, Phone, MapPin, Globe, ChevronRight, Bell, Shield, HelpCircle, LogOut, CreditCard as Edit3, X, Check, Boxes } from 'lucide-react';
 import FormField, { Input, Textarea } from '../components/FormField';
+import { useAuth } from '../context/AuthContext';
+import { NavTab } from '../types';
 
 interface ProfileData {
   name: string;
@@ -22,7 +24,12 @@ const defaultProfile: ProfileData = {
   npwp: '01.234.567.8-001.000',
 };
 
-export default function ProfilePage() {
+interface ProfilePageProps {
+  onNavigate?: (tab: NavTab) => void;
+}
+
+export default function ProfilePage({ onNavigate }: ProfilePageProps) {
+  const { session, role, signOut, profile: authProfile } = useAuth();
   const [profile, setProfile] = useState<ProfileData>(defaultProfile);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ProfileData>(defaultProfile);
@@ -37,9 +44,12 @@ export default function ProfilePage() {
     setEditing(false);
   };
 
-  const initials = profile.name
+  const displayName = authProfile?.full_name || session?.user.user_metadata?.full_name || session?.user.email || profile.name || 'User';
+  const displayEmail = session?.user.email ?? profile.email;
+
+  const initials = displayName
     .split(' ')
-    .map(n => n[0])
+    .map((n: string) => n[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
@@ -91,9 +101,10 @@ export default function ProfilePage() {
             {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-bold text-slate-800">{profile.name}</h2>
+            <h2 className="text-lg font-bold text-slate-800">{displayName}</h2>
             <p className="text-sm text-slate-500 truncate">{profile.business_name}</p>
-            <p className="text-xs text-slate-400 truncate">{profile.email}</p>
+            <p className="text-xs text-slate-400 truncate">{displayEmail}</p>
+            <p className="text-[11px] text-blue-600 font-semibold uppercase tracking-wide mt-0.5">Role: {role}</p>
           </div>
           <button
             onClick={handleEdit}
@@ -110,7 +121,7 @@ export default function ProfilePage() {
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Informasi Bisnis</p>
           </div>
           <ProfileItem icon={<Building2 size={15} />} label="Perusahaan" value={profile.business_name} />
-          <ProfileItem icon={<Mail size={15} />} label="Email" value={profile.email} />
+          <ProfileItem icon={<Mail size={15} />} label="Email" value={displayEmail} />
           <ProfileItem icon={<Phone size={15} />} label="Telepon" value={profile.phone} />
           <ProfileItem icon={<MapPin size={15} />} label="Alamat" value={profile.address} />
           <ProfileItem icon={<Globe size={15} />} label="Website" value={profile.website} />
@@ -121,12 +132,22 @@ export default function ProfilePage() {
           <div className="px-4 py-2.5 border-b border-slate-50">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Pengaturan</p>
           </div>
+          {role === 'admin' && (
+            <MenuRow
+              icon={<Boxes size={15} className="text-violet-500" />}
+              label="Master Produk & Jasa"
+              onClick={() => onNavigate?.('master_products_services')}
+            />
+          )}
           <MenuRow icon={<Bell size={15} className="text-blue-500" />} label="Notifikasi" />
           <MenuRow icon={<Shield size={15} className="text-emerald-500" />} label="Keamanan & Privasi" />
           <MenuRow icon={<HelpCircle size={15} className="text-amber-500" />} label="Bantuan & Dukungan" last />
         </div>
 
-        <button className="w-full flex items-center gap-3 bg-white rounded-2xl border border-red-100 px-4 py-3.5 hover:bg-red-50 active:scale-[0.99] transition-all">
+        <button
+          onClick={signOut}
+          className="w-full flex items-center gap-3 bg-white rounded-2xl border border-red-100 px-4 py-3.5 hover:bg-red-50 active:scale-[0.99] transition-all"
+        >
           <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
             <LogOut size={15} className="text-red-500" />
           </div>
@@ -153,9 +174,9 @@ function ProfileItem({ icon, label, value, last }: { icon: React.ReactNode; labe
   );
 }
 
-function MenuRow({ icon, label, last }: { icon: React.ReactNode; label: string; last?: boolean }) {
+function MenuRow({ icon, label, last, onClick }: { icon: React.ReactNode; label: string; last?: boolean; onClick?: () => void }) {
   return (
-    <button className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 active:bg-slate-100 transition-colors text-left ${!last ? 'border-b border-slate-50' : ''}`}>
+    <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 active:bg-slate-100 transition-colors text-left ${!last ? 'border-b border-slate-50' : ''}`}>
       <div className="w-8 h-8 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>

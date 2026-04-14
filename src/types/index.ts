@@ -2,6 +2,7 @@ export type WorkOrderStatus = 'pending' | 'in_progress' | 'ready_to_quotation' |
 export type WorkOrderPriority = 'low' | 'medium' | 'high';
 export type QuotationStatus = 'draft' | 'sent' | 'ready_to_invoice' | 'accepted' | 'rejected';
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue';
+export type UserRole = 'admin' | 'mekanik';
 
 export interface MasterProductService {
   id: string;
@@ -86,4 +87,4 @@ export interface Invoice {
   created_at: string;
 }
 
-export type NavTab = 'home' | 'workorder' | 'quotation' | 'invoice' | 'profile';
+export type NavTab = 'home' | 'workorder' | 'quotation' | 'invoice' | 'profile' | 'master_products_services';
